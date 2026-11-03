@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#070b14">
+  <meta name="description" content="Reconocimiento de lenguaje de señas en tiempo real con TensorFlow.js. Aprende, entrena y forma palabras directamente en tu navegador.">
+  <title>Señas · Reconocimiento de lenguaje de señas en tiempo real</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilos.css">
+
+  <!-- Librerías de visión por computadora (CDN, sin build tools) -->
+  <!-- @mediapipe/hands debe cargarse antes: expone el global Hands que usa el runtime "mediapipe". -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.1/dist/hand-pose-detection.min.js"></script>
+  <script defer src="scrpts.js"></script>
+</head>
+<body>
+  <a class="saltar" href="#contenido">Saltar al contenido</a>
+
+  <div class="fondo" aria-hidden="true">
+    <span class="fondo__brillo fondo__brillo--cian"></span>
+    <span class="fondo__brillo fondo__brillo--magenta"></span>
+    <span class="fondo__brillo fondo__brillo--lima"></span>
+  </div>
+
+  <header class="cabecera">
+    <div class="contenedor cabecera__fila">
+      <a class="marca" href="#vista-reconocer" aria-label="Señas, ir a reconocer">
+        <span class="marca__icono" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"/>
+            <path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/>
+            <path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V15"/>
+            <path d="M17 10.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-1.2a6 6 0 0 1-4.7-2.3L4.6 15.3a1.6 1.6 0 0 1 2.5-2l1.9 2.2"/>
+          </svg>
+        </span>
+        <span class="marca__texto">
+          <strong>Señas</strong>
+          <small>Tu alfabeto, en tiempo real</small>
+        </span>
+      </a>
+
+      <div class="cabecera__acciones">
+        <label class="campo-alfabeto" for="select-alfabeto">
+          <span>Alfabeto</span>
+          <select id="select-alfabeto" aria-label="Elegir alfabeto de señas">
+            <option value="lsm">LSM · A–Z + Ñ</option>
+            <option value="asl">ASL · A–Z</option>
+          </select>
+        </label>
+
+        <div class="chip" id="chip-modelo" data-estado="cargando" role="status" aria-live="polite">
+          <span class="chip__punto" aria-hidden="true"></span>
+          <span id="estado-modelo">Cargando modelo…</span>
+        </div>
+      </div>
+    </div>
+
+    <nav class="tabs contenedor" role="tablist" aria-label="Secciones de la aplicación">
+      <button class="tab activa" id="tab-reconocer" type="button" role="tab" aria-selected="true" aria-controls="vista-reconocer" data-vista="reconocer" tabindex="0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"/>
+          <path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"/>
+          <path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V15"/>
+          <path d="M17 10.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-1.2a6 6 0 0 1-4.7-2.3L4.6 15.3a1.6 1.6 0 0 1 2.5-2l1.9 2.2"/>
+        </svg>
+        <span>Reconocer</span>
+      </button>
+      <button class="tab" id="tab-entrenar" type="button" role="tab" aria-selected="false" aria-controls="vista-entrenar" data-vista="entrenar" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="8"/>
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+        </svg>
+        <span>Entrenar</span>
+      </button>
+      <button class="tab" id="tab-diccionario" type="button" role="tab" aria-selected="false" aria-controls="vista-diccionario" data-vista="diccionario" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/>
+          <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20"/>
+          <path d="M8 7h8M8 10.5h5"/>
+        </svg>
+        <span>Diccionario</span>
+      </button>
+      <button class="tab" id="tab-ayuda" type="button" role="tab" aria-selected="false" aria-controls="vista-ayuda" data-vista="ayuda" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M9.5 9a2.6 2.6 0 1 1 4.2 2.1c-.9.7-1.7 1.2-1.7 2.4"/>
+          <path d="M12 17.2h.01"/>
+        </svg>
+        <span>Ayuda</span>
+      </button>
+    </nav>
+  </header>
+
+  <main id="contenido" class="contenedor">
+    <!-- ============ RECONOCER ============ -->
+    <section class="vista" id="vista-reconocer" role="tabpanel" aria-labelledby="tab-reconocer" tabindex="0">
+      <div class="rejilla-reconocer">
+        <article class="panel panel-camara">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Visión en vivo</p>
+              <h2>Cámara</h2>
+            </div>
+            <span class="estado-camara" id="estado-camara" data-estado="inactiva">
+              <span class="punto" aria-hidden="true"></span>
+              <span id="texto-estado-camara">Cámara inactiva</span>
+            </span>
+          </div>
+
+          <div class="escenario">
+            <video id="video" playsinline muted autoplay aria-label="Vista en vivo de la cámara"></video>
+            <canvas id="canvas" aria-hidden="true"></canvas>
+
+            <div class="capa" id="capa-camara">
+              <div class="capa__icono" id="capa-icono" aria-hidden="true">✋</div>
+              <h3 id="capa-titulo">Preparando la experiencia</h3>
+              <p id="capa-texto">Estamos cargando el modelo de detección de manos. Necesitas conexión a internet la primera vez.</p>
+              <button class="btn btn--primario" id="capa-boton" type="button" disabled>Espera un momento…</button>
+            </div>
+
+            <div class="aviso-mano" id="aviso-sin-mano" hidden>
+              <span aria-hidden="true">✋</span> Acerca tu mano a la cámara
+            </div>
+          </div>
+
+          <div class="pie-camara">
+            <label class="campo" for="select-camara">
+              <span class="campo__etiqueta">Cámara disponible</span>
+              <select id="select-camara" disabled>
+                <option>Activa la cámara para elegir</option>
+              </select>
+            </label>
+            <button class="btn btn--fantasma" id="btn-detener-camara" type="button" hidden>Detener cámara</button>
+          </div>
+
+          <p class="nota-privacidad">
+            <span aria-hidden="true">🔒</span>
+            <span><strong>Privado por diseño:</strong> el video no se graba ni se envía. Solo se procesan los puntos de la mano en tu dispositivo.</span>
+          </p>
+        </article>
+
+        <article class="panel panel-deteccion">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Traducción</p>
+              <h2>Letra detectada</h2>
+            </div>
+            <span class="estado-mano" id="estado-mano" data-estado="espera">
+              <span class="punto" aria-hidden="true"></span>
+              <span id="texto-estado-mano">Sin mano</span>
+            </span>
+          </div>
+
+          <div class="letra-escenario">
+            <span class="letra-gigante" id="letra-detectada" aria-hidden="true">?</span>
+            <div class="letra-meta">
+              <span class="confianza"><strong id="confianza-valor">0%</strong><span>confianza</span></span>
+              <span class="lateralidad" id="estado-lateralidad">—</span>
+              <span class="lateralidad" id="origen-prediccion" data-origen="">—</span>
+            </div>
+          </div>
+
+          <div class="medidor" aria-hidden="true">
+            <div class="medidor__relleno" id="barra-confianza"></div>
+          </div>
+
+          <div class="progreso-mantener">
+            <div class="progreso-mantener__texto">
+              <span id="texto-estabilizacion">Esperando una seña estable</span>
+              <span id="contador-estabilizacion">0/15</span>
+            </div>
+            <div class="barra" id="progreso-estabilizacion" role="progressbar" aria-label="Progreso para aceptar la seña" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="barra__relleno" id="barra-estabilizacion"></div>
+            </div>
+          </div>
+
+          <div class="movimiento">
+            <div class="movimiento__fila">
+              <span>Movimiento de la punta</span>
+              <strong id="valor-movimiento">0.00</strong>
+            </div>
+            <div class="barra barra--fina" aria-hidden="true">
+              <div class="barra__relleno barra__relleno--magenta" id="barra-movimiento"></div>
+            </div>
+          </div>
+
+          <details class="ajustes">
+            <summary>Ajustes de reconocimiento</summary>
+            <div class="ajustes__rejilla">
+              <label class="campo-rango" for="rango-k">
+                <span>Vecinos KNN <output id="valor-k" for="rango-k">5</output></span>
+                <input id="rango-k" type="range" min="1" max="15" step="1" value="5">
+              </label>
+              <label class="campo-rango" for="rango-umbral">
+                <span>Confianza mínima <output id="valor-umbral" for="rango-umbral">70%</output></span>
+                <input id="rango-umbral" type="range" min="50" max="99" step="1" value="70">
+              </label>
+              <label class="campo-rango" for="rango-frames">
+                <span>Frames estables <output id="valor-frames" for="rango-frames">15</output></span>
+                <input id="rango-frames" type="range" min="5" max="40" step="1" value="15">
+              </label>
+            </div>
+            <label class="check" for="check-movimiento">
+              <input type="checkbox" id="check-movimiento" checked>
+              <span>Exigir movimiento en J, Z (y Ñ en LSM)</span>
+            </label>
+            <p class="nota">Umbral alto = menos falsos positivos. Sube los frames si tu seña tiembla.</p>
+          </details>
+        </article>
+
+        <article class="panel panel-palabra">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Composición</p>
+              <h2>Palabra actual</h2>
+            </div>
+            <span class="pista">Las letras aceptadas se agregan solas</span>
+          </div>
+
+          <div class="palabra vacia" id="palabra-actual" aria-live="polite">—</div>
+          <div class="sugerencias" id="sugerencias" aria-label="Sugerencias del diccionario" hidden></div>
+
+          <div class="acciones-palabra">
+            <button class="btn btn--fantasma" id="btn-espacio" type="button">
+              <span aria-hidden="true">␣</span> Espacio
+            </button>
+            <button class="btn btn--fantasma" id="btn-borrar-letra" type="button" disabled>
+              <span aria-hidden="true">⌫</span> Borrar
+            </button>
+            <button class="btn btn--fantasma" id="btn-limpiar-palabra" type="button" disabled>
+              Limpiar
+            </button>
+            <button class="btn btn--primario" id="btn-guardar-palabra" type="button" disabled>
+              Guardar palabra
+            </button>
+            <button class="btn btn--acento" id="btn-pronunciar-palabra" type="button" disabled>
+              <span aria-hidden="true">🔊</span> Pronunciar
+            </button>
+          </div>
+        </article>
+
+        <article class="panel panel-practica" id="practica-panel">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Modo práctica</p>
+              <h2>Ponte a prueba</h2>
+            </div>
+            <span class="chip chip--suave" id="practica-estado">Inactivo</span>
+          </div>
+
+          <div class="practica__cuerpo">
+            <div class="practica__objetivo">
+              <span>Muestra esta letra</span>
+              <strong id="practica-objetivo">?</strong>
+            </div>
+            <div class="practica__stats">
+              <div><span>Puntos</span><strong id="practica-puntos">0</strong></div>
+              <div><span>Racha</span><strong id="practica-racha">0</strong></div>
+              <div><span>Mejor</span><strong id="practica-mejor">0</strong></div>
+            </div>
+          </div>
+
+          <p class="practica__feedback" id="practica-feedback" aria-live="polite">Entrena algunas letras y pulsa iniciar.</p>
+
+          <div class="acciones-palabra">
+            <button class="btn btn--primario" id="btn-practica" type="button">Iniciar práctica</button>
+            <button class="btn btn--fantasma" id="btn-practica-saltar" type="button" disabled>Otra letra</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ ENTRENAR ============ -->
+    <section class="vista" id="vista-entrenar" role="tabpanel" aria-labelledby="tab-entrenar" tabindex="0" hidden>
+      <div class="introduccion">
+        <p class="eyebrow">Aprendizaje</p>
+        <h1>Enseña a la app tu forma de firmar</h1>
+        <p>Todas las letras se reconocen desde el primer uso con la base general. Captura muestras para afinar tu estilo y mejorar la precisión. Todo se guarda en este navegador.</p>
+        <span class="chip chip--suave" id="alfabeto-entrenar">LSM · 27 letras</span>
+      </div>
+
+      <div class="rejilla-entrenar">
+        <article class="panel panel-camara-mini">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Vista guiada</p>
+              <h2>Tu mano</h2>
+            </div>
+          </div>
+          <div class="escenario escenario--mini">
+            <video id="video-entrenar" playsinline muted autoplay aria-label="Vista de la cámara para entrenar"></video>
+            <canvas id="canvas-entrenar" aria-hidden="true"></canvas>
+            <div class="capa capa--mini" id="capa-entrenar">
+              <p id="texto-capa-entrenar">Activa la cámara para ver el esqueleto mientras capturas.</p>
+              <button class="btn btn--primario btn--pequeno" id="btn-camara-entrenar" type="button">Activar cámara</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel panel-captura">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Muestras</p>
+              <h2>Capturar</h2>
+            </div>
+            <span class="chip chip--suave" id="letra-seleccionada">—</span>
+          </div>
+
+          <p class="captura__contador">
+            <strong id="contador-letra">0 muestras</strong>
+            <span id="meta-letra">Elige una letra del alfabeto</span>
+          </p>
+          <div class="barra" aria-hidden="true">
+            <div class="barra__relleno barra__relleno--lima" id="barra-letra"></div>
+          </div>
+
+          <button class="btn btn--capturar" id="btn-capturar" type="button" disabled>
+            <span aria-hidden="true">＋</span>
+            <span class="btn--capturar__texto">Capturar muestra<small>Mantén presionado para capturar varias</small></span>
+          </button>
+
+          <p class="nota">Varía el ángulo y la distancia. Meta recomendada: 30–50 muestras por letra. Sin muestras, la letra sigue funcionando con la base general.</p>
+        </article>
+
+        <article class="panel panel-letras">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Alfabeto</p>
+              <h2>Elige una letra</h2>
+            </div>
+            <span class="pista">⚡ = seña con movimiento</span>
+          </div>
+          <div class="grid-letras" id="grid-letras" role="group" aria-label="Letras del alfabeto para entrenar"></div>
+        </article>
+
+        <article class="panel panel-dataset">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Memoria</p>
+              <h2>Dataset</h2>
+            </div>
+          </div>
+
+          <div class="resumen-entrenamiento">
+            <div><span>Con muestras</span><strong id="num-con-muestras">0</strong></div>
+            <div><span>Personalizadas (30+)</span><strong id="num-listas">0</strong></div>
+            <div><span>Sin personalizar</span><strong id="num-pendientes">0</strong></div>
+          </div>
+
+          <div class="acciones-dataset">
+            <button class="btn btn--fantasma" id="btn-exportar" type="button">Exportar JSON</button>
+            <button class="btn btn--fantasma" id="btn-importar" type="button">Importar JSON</button>
+            <button class="btn btn--fantasma" id="btn-borrar-letra" type="button">Borrar letra</button>
+            <button class="btn btn--peligro" id="btn-borrar-todo" type="button">Borrar todo</button>
+          </div>
+
+          <input type="file" id="input-importar" accept="application/json,.json" hidden>
+          <p class="nota">Se guarda automáticamente en este navegador con localStorage.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ DICCIONARIO ============ -->
+    <section class="vista" id="vista-diccionario" role="tabpanel" aria-labelledby="tab-diccionario" tabindex="0" hidden>
+      <div class="introduccion">
+        <p class="eyebrow">Tu vocabulario</p>
+        <h1>Diccionario e historial</h1>
+        <p>Las palabras guardadas alimentan el autocompletado mientras deletreas. También puedes añadirlas manualmente.</p>
+      </div>
+
+      <div class="rejilla-diccionario">
+        <article class="panel">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Palabras</p>
+              <h2>Diccionario local</h2>
+            </div>
+            <span class="chip chip--suave" id="contador-diccionario">0 palabras</span>
+          </div>
+
+          <form class="form-palabra" id="form-diccionario">
+            <label class="sr-only" for="input-palabra">Nueva palabra para el diccionario</label>
+            <input id="input-palabra" type="text" placeholder="Añadir palabra…" autocomplete="off" maxlength="40">
+            <button class="btn btn--primario" type="submit">Añadir</button>
+          </form>
+
+          <ul class="lista" id="lista-diccionario"></ul>
+          <p class="vacio" id="vacio-diccionario">Todavía no hay palabras. Guarda una desde la pestaña Reconocer o añádela arriba.</p>
+        </article>
+
+        <article class="panel">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Frases</p>
+              <h2>Historial</h2>
+            </div>
+            <button class="btn btn--fantasma btn--pequeno" id="btn-limpiar-historial" type="button">Limpiar</button>
+          </div>
+
+          <ul class="lista lista--historial" id="lista-historial"></ul>
+          <p class="vacio" id="vacio-historial">Aún no has guardado frases. Cada palabra guardada aparece aquí.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ AYUDA ============ -->
+    <section class="vista" id="vista-ayuda" role="tabpanel" aria-labelledby="tab-ayuda" tabindex="0" hidden>
+      <div class="introduccion">
+        <p class="eyebrow">Guía rápida</p>
+        <h1>Aprende a usar Señas</h1>
+        <p>La app reconoce las letras del alfabeto dactilológico desde el primer uso. Entrenar tus propias muestras afina la precisión, pero no es obligatorio para que una letra exista.</p>
+      </div>
+
+      <div class="pasos">
+        <article class="paso">
+          <span class="paso__numero" aria-hidden="true">1</span>
+          <h2>Activa la cámara</h2>
+          <p>Da permiso cuando el navegador lo pida. Necesitas HTTPS o localhost. Verás el esqueleto de 21 puntos sobre tu mano.</p>
+        </article>
+        <article class="paso">
+          <span class="paso__numero" aria-hidden="true">2</span>
+          <h2>Personaliza si quieres</h2>
+          <p>En la pestaña Entrenar elige una letra y captura 30–50 muestras variando ángulo, distancia e iluminación. Sin muestras, la base general ya intenta reconocerla.</p>
+        </article>
+        <article class="paso">
+          <span class="paso__numero" aria-hidden="true">3</span>
+          <h2>Deletrea y guarda</h2>
+          <p>Mantén la seña hasta llenar la barra. Las letras aceptadas forman palabras que puedes pronunciar y guardar.</p>
+        </article>
+      </div>
+
+      <div class="rejilla-ayuda">
+        <article class="panel">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Buenas prácticas</p>
+              <h2>Para un reconocimiento estable</h2>
+            </div>
+          </div>
+          <ul class="lista-consejos">
+            <li><strong>Luz frontal y uniforme.</strong> Evita contraluz y sombras duras sobre la mano.</li>
+            <li><strong>Fondo simple.</strong> Una pared lisa ayuda a separar la mano.</li>
+            <li><strong>Mano completa en cuadro.</strong> Muñeca y dedos deben verse.</li>
+            <li><strong>Varía al entrenar.</strong> Distintos ángulos, distancias y orientaciones de la mano.</li>
+            <li><strong>Consistencia.</strong> Firma igual al entrenar y al reconocer; la app compara posiciones, no intención.</li>
+            <li><strong>Letras con movimiento.</strong> J, Z y Ñ requieren trayectoria; míralas como experimentales.</li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <div class="panel__cabecera">
+            <div>
+              <p class="eyebrow">Privacidad y soporte</p>
+              <h2>Qué debes saber</h2>
+            </div>
+          </div>
+          <ul class="lista-consejos">
+            <li><strong>Sin grabaciones.</strong> No se guardan fotos ni video; solo vectores de 42 números.</li>
+            <li><strong>Datos locales.</strong> El dataset vive en localStorage de este navegador. Expórtalo para respaldarlo.</li>
+            <li><strong>Navegadores.</strong> Chrome, Edge o Firefox actualizados. En iOS, Safari puede limitar algunas cámaras.</li>
+            <li><strong>CDN.</strong> TensorFlow.js y el modelo se cargan desde jsDelivr; la primera vez requiere internet.</li>
+            <li><strong>Voces.</strong> La pronunciación usa las voces en español instaladas en tu sistema.</li>
+            <li><strong>Accesibilidad.</strong> Puedes navegar con Tab, activar pestañas con flechas y capturar con Enter o Espacio.</li>
+          </ul>
+        </article>
+      </div>
+
+      <article class="panel panel-referencia">
+        <div class="panel__cabecera">
+          <div>
+            <p class="eyebrow">Referencia</p>
+            <h2>Alfabeto dactilológico · <span id="nombre-alfabeto-ayuda">LSM</span></h2>
+          </div>
+          <span class="pista">Toca una letra para entrenarla</span>
+        </div>
+        <p class="nota nota--destacada">
+          Descripciones orientativas. Las configuraciones varían entre escuelas y regiones: valida tu alfabeto con una persona sorda o instructor de LSM/ASL.
+        </p>
+        <div class="grid-referencia" id="referencia-alfabeto"></div>
+      </article>
+
+      <details class="panel panel-desplegable">
+        <summary>Problemas frecuentes</summary>
+        <div class="contenido-desplegable">
+          <h3>No aparece la cámara</h3>
+          <p>Comprueba que la URL sea <code>https://</code> o <code>localhost</code>, revisa el permiso del candado en la barra de direcciones y cierra otras apps que usen la cámara.</p>
+          <h3>El modelo no carga</h3>
+          <p>La primera visita descarga TensorFlow.js y MediaPipe desde jsDelivr. Revisa tu conexión, bloqueadores de scripts o redes que filtren CDN y recarga la página.</p>
+          <h3>Detecta letras incorrectas</h3>
+          <p>La base general es una aproximación geométrica: si una letra se confunde, captura muestras de esa letra para personalizarla. También ayuda subir la confianza mínima y aumentar los frames estables.</p>
+          <h3>J y Z no se aceptan</h3>
+          <p>Estas señas necesitan movimiento. Traza la trayectoria con el índice sin sacar la mano del cuadro o desactiva “Exigir movimiento” en los ajustes.</p>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <footer class="pie">
+    <div class="contenedor pie__fila">
+      <p><strong>Señas</strong> · Hecho con TensorFlow.js y MediaPipe. Sin backend, sin grabaciones.</p>
+      <p class="pie__nota">Herramienta educativa, no un intérprete profesional.</p>
+    </div>
+  </footer>
+
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+  <div class="sr-only" id="anuncio" aria-live="polite"></div>
+
+  <dialog class="dialogo" id="dialogo-confirmar" aria-labelledby="dialogo-titulo" aria-describedby="dialogo-mensaje">
+    <form method="dialog">
+      <h2 id="dialogo-titulo">Confirmar acción</h2>
+      <p id="dialogo-mensaje">¿Seguro que quieres continuar?</p>
+      <div class="dialogo__acciones">
+        <button class="btn btn--fantasma" value="cancelar" type="submit">Cancelar</button>
+        <button class="btn btn--peligro" id="dialogo-btn-confirmar" value="confirmar" type="submit">Eliminar</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
